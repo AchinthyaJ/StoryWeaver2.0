@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Story Generator</title>
+    
+    <!-- PDF Generation Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Use the Inter font family */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom font for the main title */
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+        /* Custom scrollbar for a more polished look */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.1); /* transparent track */
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4a5568; /* gray-600 */
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #718096; /* gray-500 */
+        }
+        /* Simple spinner animation */
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            width: 1.5rem;
+            height: 1.5rem;
+            animation: spin 1s linear infinite;
+        }
+        
+        /* Fade-in and slide-up animation */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .animate-fadeInUp {
+            animation: fadeInUp 0.5s ease-out forwards;
+        }
+
+        /* Gradient fade for truncated text */
+        .fade-out-bottom {
+            position: relative;
+        }
+        .fade-out-bottom::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 4rem; /* 64px */
+            background: linear-gradient(to bottom, transparent, #1c192c); /* #1c192c is a dark purple from the gradient */
+            pointer-events: none;
+        }
+
+        /* Main container grid layout */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 2rem;
+            max-width: 80rem; /* 1280px */
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* Reading mode styles */
+        .main-grid.reading-mode .story-card {
+            grid-column: 1 / -1; /* Span full width */
+            max-width: 56rem; /* 896px */
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .main-grid.reading-mode .craft-card {
+            /* Animate out: fade, shrink, and hide */
+            opacity: 0;
+            transform: scale(0.95);
+            max-height: 0;
+            padding: 0;
+            margin: 0;
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        /* Card transition styles */
+        .craft-card, .story-card {
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Set initial opacity for animation */
+        .craft-card, .story-card {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        
+        /* PDF Loader Styling */
+        #pdf-loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 9998;
+            display: flex; /* Will be toggled by JS */
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        #pdf-loader .spinner {
+            width: 3rem;
+            height: 3rem;
+        }
+        #pdf-loader p {
+            font-size: 1.125rem;
+            color: white;
+            font-weight: 500;
+        }
+        
+        /* PDF Download Format (Invisible) */
+        #pdf-format {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            width: 210mm; /* A4 width */
+            /* Height is auto */
+            background: #111827; /* Dark background */
+            color: #d1d5db; /* Light text */
+            padding: 20mm;
+            font-family: 'Inter', sans-serif;
+            box-sizing: border-box;
+        }
+        #pdf-format h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: white;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        #pdf-format img {
+            width: 100%;
+            height: auto;
+            aspect-ratio: 16 / 9;
+            object-fit: cover;
+            border-radius: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        #pdf-format .pdf-story-content p {
+            font-size: 11pt;
+            line-height: 1.6;
+            white-space: pre-wrap; /* Preserve line breaks */
+            margin-bottom: 1rem;
+            /* Ensure text breaks to prevent overflow */
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+
+
+        @media (min-width: 1024px) {
+            .main-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Orbitron:wght@700&display-swap" rel="stylesheet">
+</head>
+<body class="bg-gradient-to-br from-gray-900 via-indigo-900 to-purple-900 text-gray-100 min-h-screen p-4 md:p-8 overflow-x-hidden">
+    
+    <!-- PDF Generation Loader (Initially hidden) -->
+    <div id="pdf-loader" style="display: none;">
+        <div class="spinner"></div>
+        <p>Generating your PDF...</p>
+    </div>
+    
+    <!-- PDF Download Format (Invisible) -->
+    <div id="pdf-format">
+        <h1 id="pdf-title"></h1>
+        <img id="pdf-image" src="" alt="Story Illustration">
+        <div id="pdf-story" class="pdf-story-content"></div>
+    </div>
+    
+    <!-- Header -->
+    <header class="text-center mb-10 max-w-7xl mx-auto flex justify-between items-center">
+        <h1 class="text-5xl md:text-6xl font-bold font-orbitron text-white text-shadow-lg animate-fadeInUp" style="animation-delay: 0.1s;">
+            Story Weaver
+        </h1>
+        <button id="usage-btn" class="animate-fadeInUp bg-black/30 backdrop-blur-sm p-3 rounded-lg shadow-xl border border-gray-700/50 text-indigo-300 hover:text-white hover:border-indigo-400 transition-all duration-300" style="animation-delay: 0.2s;">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+        </button>
+    </header>
+
+    <!-- Usage Modal (Initially hidden) -->
+    <div id="usage-modal" class="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50 opacity-0 pointer-events-none transition-opacity duration-300">
+        <div class="bg-gray-800 p-6 rounded-lg shadow-2xl border border-gray-700 max-w-sm w-full transform -translate-y-10 transition-all duration-300">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-500">API Usage (Today)</h3>
+                <button id="close-usage-btn" class="text-gray-400 hover:text-white">&times;</button>
+            </div>
+            <div class="space-y-3">
+                <div class="flex justify-between">
+                    <span class="text-gray-300">Text Generations:</span>
+                    <span id="text-usage-count" class="font-medium text-white">0</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-300">Image Generations:</span>
+                    <span id="image-usage-count" class="font-medium text-white">0 / 1</span>
+                </div>
+            </div>
+            <p class="text-xs text-gray-500 mt-4">*Usage is tracked in your browser and resets daily.</p>
+        </div>
+    </div>
+    
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-10 right-10 z-50 bg-green-600 text-white px-5 py-3 rounded-lg shadow-xl opacity-0 translate-y-5 transition-all duration-300">
+        API Key saved!
+    </div>
+    
+    <main id="main-grid" class="main-grid">
+
+        <!-- Left Column: Crafting -->
+        <div class="craft-card bg-black/30 backdrop-blur-sm p-6 md:p-8 rounded-lg shadow-xl border border-gray-700/50 transition-all duration-300 hover:shadow-indigo-500/30 hover:border-indigo-500/50" style="animation-delay: 0.3s;">
+            <h2 class="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-500 mb-6">
+                Craft Your Story
+            </h2>
+
+            <!-- API Key Input -->
+            <div class="mb-4">
+                <label for="api-key" class="block text-sm font-medium text-gray-300 mb-2">Your Google AI Studio API Key</label>
+                <div class="flex space-x-2">
+                    <input type="password" id="api-key" class="w-full bg-gray-900/70 text-white rounded-md border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3" placeholder="Enter your API key...">
+                    <button id="save-api-key-btn" class="px-4 py-2 bg-indigo-600 text-white rounded-md font-medium hover:bg-indigo-700 transition-all duration-300">Save</button>
+                </div>
+            </div>
+            
+            <!-- Prompt Input -->
+            <div>
+                <label for="prompt" class="block text-sm font-medium text-gray-300 mb-2">Your Story Prompt</label>
+                <textarea id="prompt" rows="5" class="w-full bg-gray-900/70 text-white rounded-md border-gray-600 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3" placeholder="e.g., A cynical detective in a neon-drenched city finds a mysterious package..."></textarea>
+            </div>
+
+            <!-- Story Length -->
+            <div class="mt-6">
+                <label class="block text-sm font-medium text-gray-300 mb-2">Story Length</label>
+                <div class="flex justify-around bg-gray-900/70 rounded-lg p-1 border border-gray-600">
+                    <button class="length-btn flex-1 py-2 rounded-md text-sm font-medium text-gray-300 transition-all" data-length="short">Short</button>
+                    <button class="length-btn flex-1 py-2 rounded-md text-sm font-medium text-white bg-indigo-600 shadow-md transition-all" data-length="medium">Medium</button>
+                    <button class="length-btn flex-1 py-2 rounded-md text-sm font-medium text-gray-300 transition-all" data-length="long">Long</button>
+                </div>
+            </div>
+
+            <!-- Creative Toggle -->
+            <div class="flex items-center justify-center mt-6">
+                <span class="text-sm font-medium text-gray-300 mr-3">Allow AI creative freedom</span>
+                <button type="button" id="creative-toggle" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-indigo-600 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-900" role="switch" aria-checked="true">
+                    <span class="sr-only">Allow AI creative freedom</span>
+                    <span aria-hidden="true" id="creative-toggle-knob" class="inline-block h-5 w-5 translate-x-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+                </button>
+            </div>
+
+            <!-- Generate Button -->
+            <div class="text-center mt-8">
+                <button id="generate-btn" class="inline-flex items-center justify-center w-full md:w-auto px-8 py-3 border border-transparent text-base font-medium rounded-md shadow-lg text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105">
+                    <svg id="loading-spinner" class="spinner mr-3 hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span id="button-text">Generate Story</span>
+                </button>
+            </div>
+
+            <!-- Error Message -->
+            <div id="error-message" class="hidden mt-4 p-3 bg-red-800 border border-red-600 text-red-100 rounded-md text-center">
+                <!-- Errors appear here -->
+            </div>
+
+        </div>
+
+        <!-- Right Column: Story & Image -->
+        <div class="story-card bg-black/30 backdrop-blur-sm p-6 md:p-8 rounded-lg shadow-xl border border-gray-700/50 min-h-[500px] flex flex-col transition-all duration-300 hover:shadow-indigo-500/30 hover:border-indigo-500/50" style="animation-delay: 0.5s;">
+            
+            <!-- Back to Editor Button (Hidden initially) -->
+            <button id="back-to-editor-btn" class="hidden items-center text-indigo-300 hover:text-white mb-4 group">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 transition-transform duration-300 group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back to Editor
+            </button>
+            
+            <!-- Generated Title -->
+            <h2 id="generated-story-title" class="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-500 mb-6 flex-shrink-0">
+                Generated Story
+            </h2>
+            
+            <!-- Image Wrapper -->
+            <div id="image-wrapper" class="mb-6 border-b border-gray-700/50 pb-6">
+                <h3 class="text-lg font-medium text-gray-300 mb-4">
+                    Story Illustration
+                </h3>
+                <div id="image-container" class="w-full aspect-video bg-gray-900/50 rounded-md flex items-center justify-center border border-gray-700/50">
+                    <p id="image-placeholder" class="text-gray-400 italic">An illustration for your story will appear here.</p>
+                    <img id="generated-image" src="" alt="Generated story illustration" class="hidden w-full h-full object-cover rounded-md">
+                    <div id="image-loader" class="hidden items-center justify-center text-center">
+                        <div class="spinner !w-10 !h-10"></div>
+                        <p class="text-gray-300 mt-2 text-sm">Generating your unique image...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Story Wrapper -->
+            <div id="story-output-wrapper" class="h-[250px] overflow-hidden pr-2 fade-out-bottom transition-all duration-500">
+                <div id="story-output" class="prose prose-invert max-w-none text-gray-300 leading-relaxed">
+                    <p class="italic">Your generated story will appear here...</p>
+                </div>
+            </div>
+            
+            <!-- Story Controls (Hidden initially) -->
+            <div id="story-controls" class="mt-6 space-y-4 md:space-y-0 md:space-x-4 md:flex hidden">
+                <button id="view-full-story-btn" class="inline-flex items-center justify-center w-full md:w-auto px-6 py-2 border border-indigo-400 text-base font-medium rounded-md shadow-sm text-indigo-300 hover:bg-indigo-900/50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 transition-all duration-300">
+                    View Full Story
+                </button>
+                <button id="continue-story-btn" class="hidden w-full md:w-auto px-6 py-2 border border-transparent text-base font-medium rounded-md shadow-lg text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 transition-all duration-300">
+                    Continue Story...
+                </button>
+                <button id="download-pdf-btn" class="hidden w-full md:w-auto px-6 py-2 border border-gray-500 text-base font-medium rounded-md shadow-sm text-gray-300 hover:bg-gray-700/50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 focus:ring-offset-gray-900 transition-all duration-300">
+                    Download Story (PDF)
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // === PDF Library Check ===
+        if (typeof jspdf === 'undefined' || typeof html2canvas === 'undefined') {
+            console.warn("PDF generation libraries (jsPDF, html2canvas) not loaded. PDF download will be disabled.");
+        }
+
+        // === Constants ===
+        const API_KEY_STORAGE_KEY = 'storyWeaverApiKey';
+        const QUOTA_KEY_IMAGE = 'storyWeaverImageQuota';
+        const QUOTA_KEY_TEXT = 'storyWeaverTextQuota';
+
+        // === UI Element References ===
+        const generateBtn = document.getElementById('generate-btn');
+        const buttonText = document.getElementById('button-text');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const outputEl = document.getElementById('story-output');
+        const errorEl = document.getElementById('error-message');
+        const promptEl = document.getElementById('prompt');
+        const creativeToggle = document.getElementById('creative-toggle');
+        const creativeToggleKnob = document.getElementById('creative-toggle-knob');
+        // API Key
+        const apiKeyInput = document.getElementById('api-key');
+        const saveApiKeyBtn = document.getElementById('save-api-key-btn');
+        // Image elements
+        const imageWrapper = document.getElementById('image-wrapper');
+        const imageContainer = document.getElementById('image-container');
+        const imagePlaceholder = document.getElementById('image-placeholder');
+        const generatedImage = document.getElementById('generated-image');
+        const imageLoader = document.getElementById('image-loader');
+        // Toast
+        const toastEl = document.getElementById('toast');
+        // Usage Modal
+        const usageBtn = document.getElementById('usage-btn');
+        const usageModal = document.getElementById('usage-modal');
+        const closeUsageBtn = document.getElementById('close-usage-btn');
+        const textUsageCount = document.getElementById('text-usage-count');
+        const imageUsageCount = document.getElementById('image-usage-count');
+        // Length Buttons
+        const lengthButtons = document.querySelectorAll('.length-btn');
+        // Story Reading Mode
+        const mainGrid = document.getElementById('main-grid');
+        const storyControls = document.getElementById('story-controls');
+        const viewFullStoryBtn = document.getElementById('view-full-story-btn');
+        const backToEditorBtn = document.getElementById('back-to-editor-btn');
+        const storyOutputWrapper = document.getElementById('story-output-wrapper');
+        const continueStoryBtn = document.getElementById('continue-story-btn');
+        const storyTitleEl = document.getElementById('generated-story-title');
+        // PDF Download
+        const downloadPdfBtn = document.getElementById('download-pdf-btn');
+        const pdfLoader = document.getElementById('pdf-loader');
+        const pdfFormat = document.getElementById('pdf-format');
+        const pdfTitle = document.getElementById('pdf-title');
+        const pdfImage = document.getElementById('pdf-image');
+        const pdfStory = document.getElementById('pdf-story');
+        
+
+        // === App State ===
+        let userApiKey = '';
+        let isCreativeAllowed = true;
+        let currentStoryLength = 'medium'; // Default length
+        let fullStory = { title: '', content: '' };
+        let isReadingMode = false;
+
+        // === Event Listeners ===
+        document.addEventListener('DOMContentLoaded', () => {
+            // Load API key from local storage
+            userApiKey = localStorage.getItem(API_KEY_STORAGE_KEY) || '';
+            if (userApiKey) {
+                apiKeyInput.value = userApiKey;
+            }
+            // Start entry animations for cards
+            document.querySelector('.craft-card').classList.add('animate-fadeInUp');
+            document.querySelector('.story-card').classList.add('animate-fadeInUp');
+        });
+        
+        saveApiKeyBtn.addEventListener('click', () => {
+            userApiKey = apiKeyInput.value.trim();
+            if (userApiKey) {
+                localStorage.setItem(API_KEY_STORAGE_KEY, userApiKey);
+                showToast("API Key saved!");
+            } else {
+                localStorage.removeItem(API_KEY_STORAGE_KEY);
+                showToast("API Key removed.", true);
+            }
+        });
+
+        generateBtn.addEventListener('click', () => handleStoryGeneration(false)); // false = not continuing
+        continueStoryBtn.addEventListener('click', () => handleStoryGeneration(true)); // true = continuing
+        
+        creativeToggle.addEventListener('click', () => {
+            isCreativeAllowed = !isCreativeAllowed;
+            creativeToggle.setAttribute('aria-checked', isCreativeAllowed);
+            if (isCreativeAllowed) {
+                creativeToggle.classList.replace('bg-gray-600', 'bg-indigo-600');
+                creativeToggleKnob.classList.replace('translate-x-0', 'translate-x-5');
+            } else {
+                creativeToggle.classList.replace('bg-indigo-600', 'bg-gray-600');
+                creativeToggleKnob.classList.replace('translate-x-5', 'translate-x-0');
+            }
+        });
+
+        lengthButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                lengthButtons.forEach(btn => {
+                    btn.classList.remove('bg-indigo-600', 'text-white', 'shadow-md');
+                    btn.classList.add('text-gray-300');
+                });
+                button.classList.add('bg-indigo-600', 'text-white', 'shadow-md');
+                button.classList.remove('text-gray-300');
+                currentStoryLength = button.dataset.length;
+            });
+        });
+
+        // --- Modal & Reading Mode ---
+        usageBtn.addEventListener('click', showUsageModal);
+        closeUsageBtn.addEventListener('click', hideUsageModal);
+        viewFullStoryBtn.addEventListener('click', enterReadingMode);
+        backToEditorBtn.addEventListener('click', exitReadingMode);
+
+        // --- PDF Download ---
+        if (typeof jspdf !== 'undefined' && typeof html2canvas !== 'undefined') {
+            downloadPdfBtn.addEventListener('click', handleDownloadPdf);
+        } else {
+            downloadPdfBtn.disabled = true;
+            downloadPdfBtn.textContent = 'PDF Disabled';
+            downloadPdfBtn.title = "PDF libraries failed to load.";
+        }
+
+
+        // === Core Functions ===
+        
+        /**
+         * Gets the correct API URL with the user's key.
+         */
+        function getApiUrl(model) {
+            if (!userApiKey) {
+                showError("Please enter and save your API key first.");
+                return null;
+            }
+            if (model === 'gemini') {
+                return `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${userApiKey}`;
+            } else if (model === 'imagen') {
+                return `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${userApiKey}`;
+            }
+        }
+
+        /**
+         * Main function to orchestrate the entire generation process.
+         * @param {boolean} isContinuing - Is this a new story or a continuation?
+         */
+        async function handleStoryGeneration(isContinuing) {
+            if (!userApiKey) {
+                showError("Please enter and save your API key first.");
+                return;
+            }
+            const userPrompt = promptEl.value;
+            if (!userPrompt.trim() && !isContinuing) {
+                showError("Please enter a prompt to generate a story.");
+                return;
+            }
+
+            setLoadingState(true, isContinuing);
+            
+            try {
+                const storyData = await generateStoryText(userPrompt, isContinuing);
+                if (!storyData) throw new Error("Failed to generate story text.");
+                
+                if (isContinuing) {
+                    fullStory.content += `\n\n${storyData.story}`; // Append new content
+                } else {
+                    fullStory = { title: storyData.title, content: storyData.story };
+                    await handleImageGeneration(storyData.story); // Generate image for new story
+                }
+
+                displayStory(fullStory);
+                updateTextQuota();
+
+            } catch (error) {
+                console.error("Error in generation process:", error);
+                showError(error.message || "An error occurred. Please try again.");
+            } finally {
+                setLoadingState(false, isContinuing);
+            }
+        }
+
+        /**
+         * Generates the story text and title using the Gemini API.
+         * @param {string} userPrompt - The user's input prompt.
+         * @param {boolean} isContinuing - Is this a new story or a continuation?
+         * @returns {Promise<object|null>} An object { title, story }.
+         */
+        async function generateStoryText(userPrompt, isContinuing) {
+            const apiUrl = getApiUrl('gemini');
+            if (!apiUrl) return null;
+            
+            const lengthMap = {
+                short: 'a very short story (approx. 200 words).',
+                medium: 'a short story (approx. 500-700 words).',
+                long: 'a detailed story (approx. 1000-1200 words).'
+            };
+
+            let systemPrompt, userQuery, responseSchema;
+
+            if (isContinuing) {
+                systemPrompt = "You are a master storyteller. Your task is to seamlessly continue the story provided by the user. Write the next logical part of the narrative, maintaining the established tone, characters, and plot. Add about 200-300 more words. ONLY return the new part of the story, not the whole thing.";
+                userQuery = `Here is the story so far. Please continue it:\n\n${fullStory.content}`;
+                // For continuation, we just want raw text
+                responseSchema = {
+                    type: "OBJECT",
+                    properties: {
+                        story: { type: "STRING" }
+                    }
+                };
+            } else {
+                const creativeFreedom = isCreativeAllowed
+                    ? "You have creative freedom to invent characters, settings, and plot details that are not specified, as long as they complement the user's core idea. Weave everything into a narrative with a clear beginning, middle, and end."
+                    : "You are a precise storyteller. Your task is to write *strictly* based *only* on the elements provided in the user's prompt. Do not add any characters, settings, objects, or plot points that are not explicitly mentioned.";
+                
+                systemPrompt = `You are a master storyteller. Your task is to write ${lengthMap[currentStoryLength]} ${creativeFreedom} Based on the story, also generate a short, compelling title (max 10 words).`;
+                userQuery = `Please write a story and a title based on the following prompt: "${userPrompt}"`;
+                // For a new story, we want title and story
+                responseSchema = {
+                    type: "OBJECT",
+                    properties: {
+                        title: { type: "STRING" },
+                        story: { type: "STRING" }
+                    }
+                };
+            }
+            
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: responseSchema
+                }
+            };
+
+            const result = await fetchWithBackoff(apiUrl, payload);
+            const candidate = result.candidates?.[0];
+            
+            if (candidate && candidate.content?.parts?.[0]?.text) {
+                const jsonResponse = JSON.parse(candidate.content.parts[0].text);
+                // If continuing, title will be undefined, so we keep the old one
+                return {
+                    title: jsonResponse.title || fullStory.title,
+                    story: jsonResponse.story
+                };
+            } else {
+                throw new Error("Received an invalid response from the story API.");
+            }
+        }
+
+        /**
+         * Manages the entire image generation flow, including quota checks.
+         * @param {string} storyText - The full text of the generated story.
+         */
+        async function handleImageGeneration(storyText) {
+            const quota = checkImageQuota();
+            if (!quota.available) {
+                setImageState('quota');
+                return;
+            }
+
+            setImageState('loading');
+
+            try {
+                const imagePrompt = await getImagePrompt(storyText);
+                const base64Image = await fetchImage(imagePrompt);
+
+                generatedImage.src = `data:image/png;base64,${base64Image}`;
+                setImageState('image');
+                updateImageQuota();
+
+            } catch (error) {
+                console.error("Error generating image:", error);
+                showError("Failed to generate the story image.");
+                setImageState('placeholder');
+            }
+        }
+
+        /**
+         * Calls Gemini API to summarize the story into a visual prompt.
+         * @param {string} storyText - The full text of the generated story.
+         * @returns {Promise<string>} The concise visual prompt.
+         */
+        async function getImagePrompt(storyText) {
+            const apiUrl = getApiUrl('gemini');
+            if (!apiUrl) return null;
+
+            const systemPrompt = "You are a 'visual prompt engineer'. Your job is to read a short story and extract a single, concise, descriptive sentence (max 20 words) that captures the story's most visually striking moment or central theme. This sentence will be used as a prompt for an artistic image generator. Focus on concrete nouns, actions, settings, and a mood. The image should be artistic and stylized, not photorealistic, but still grounded in reality. Do not include character names. Do not write a summary, just the prompt.";
+            
+            const payload = {
+                contents: [{ parts: [{ text: storyText }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+            };
+            
+            const result = await fetchWithBackoff(apiUrl, payload);
+            const candidate = result.candidates?.[0];
+
+            if (candidate && candidate.content?.parts?.[0]?.text) {
+                return candidate.content.parts[0].text.replace(/"/g, ''); // Clean up quotes
+            } else {
+                throw new Error("Failed to generate image prompt.");
+            }
+        }
+
+        /**
+         * Calls Imagen API to generate an image from a prompt.
+         * @param {string} prompt - The visual prompt for the image.
+         * @returns {Promise<string>} The base64 encoded image data.
+         */
+        async function fetchImage(prompt) {
+            const apiUrl = getApiUrl('imagen');
+            if (!apiUrl) return null;
+
+            const payload = {
+                instances: [{ "prompt": prompt }],
+                parameters: { "sampleCount": 1 }
+            };
+
+            const result = await fetchWithBackoff(apiUrl, payload);
+            
+            if (result.predictions && result.predictions[0]?.bytesBase64Encoded) {
+                return result.predictions[0].bytesBase64Encoded;
+            } else {
+                throw new Error("Invalid response from image generation API.");
+            }
+        }
+
+        /**
+         * Formats and displays the story text and title in the UI.
+         * @param {object} storyData - An object { title, content }.
+         */
+        function displayStory(storyData) {
+            // Display Title
+            storyTitleEl.textContent = storyData.title || "Generated Story";
+
+            // Display Story Content
+            const formattedStory = storyData.content
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/\n/g, '<br><br>');
+            
+            outputEl.innerHTML = `<p class="fade-in">${formattedStory}</p>`;
+            
+            // Show story controls
+            storyControls.classList.remove('hidden');
+            storyControls.classList.add('flex');
+            viewFullStoryBtn.classList.remove('hidden');
+            continueStoryBtn.classList.remove('hidden');
+            downloadPdfBtn.classList.remove('hidden');
+        }
+        
+        /**
+         * Handles the PDF download process with multi-page support.
+         */
+        async function handleDownloadPdf() {
+            if (typeof jspdf === 'undefined' || typeof html2canvas === 'undefined') {
+                showError("PDF generation libraries are not available.");
+                return;
+            }
+
+            pdfLoader.style.display = 'flex'; // Show loader
+
+            try {
+                // 1. Prepare the content for the PDF
+                pdfTitle.textContent = fullStory.title || "Story Weaver";
+                pdfImage.src = generatedImage.src; // Use the already-loaded image
+                const formattedStoryForPdf = fullStory.content.replace(/\n/g, '<br><br>');
+                pdfStory.innerHTML = `<p>${formattedStoryForPdf}</p>`;
+                
+                // 2. Use html2canvas to capture the *invisible* #pdf-format div
+                const canvas = await html2canvas(pdfFormat, {
+                    scale: 2, // Higher scale for better quality
+                    useCORS: true,
+                    backgroundColor: null
+                });
+
+                // 3. Create a new jsPDF instance (A4 size)
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF({
+                    orientation: 'p',
+                    unit: 'mm',
+                    format: 'a4'
+                });
+
+                const imgData = canvas.toDataURL('image/png');
+                const canvasWidth = canvas.width;
+                const canvasHeight = canvas.height;
+
+                // 4. Calculate PDF dimensions
+                const pdfPageWidth = pdf.internal.pageSize.getWidth();
+                const pdfPageHeight = pdf.internal.pageSize.getHeight();
+                const ratio = pdfPageWidth / canvasWidth;
+                const canvasScaledHeight = canvasHeight * ratio;
+
+                // 5. Loop to add pages
+                let currentPosition = 0;
+                let heightRemaining = canvasScaledHeight;
+
+                while (heightRemaining > 0) {
+                    // Add the image to the page. The `currentPosition` will be 0 for the first page,
+                    // and negative for subsequent pages, which clips the canvas from the top.
+                    pdf.addImage(imgData, 'PNG', 0, currentPosition, pdfPageWidth, canvasScaledHeight);
+                    
+                    heightRemaining -= pdfPageHeight;
+                    
+                    // If there's more content left, add a new page
+                    if (heightRemaining > 0) {
+                        pdf.addPage();
+                        currentPosition -= pdfPageHeight; // Move the "top" of the canvas up
+                    }
+                }
+
+                // 6. Save the PDF
+                pdf.save('story-weaver.pdf');
+
+            } catch (error) {
+                console.error("Error generating PDF:", error);
+                showError("Could not generate PDF. Please try again.");
+            } finally {
+                pdfLoader.style.display = 'none'; // Hide loader
+            }
+        }
+
+
+        // === Quota Management ===
+
+        function getQuota(key) {
+            const today = new Date().toISOString().split('T')[0];
+            const quotaData = JSON.parse(localStorage.getItem(key) || '{}');
+            if (quotaData.date !== today) {
+                return { date: today, count: 0 }; // Reset count
+            }
+            return quotaData;
+        }
+
+        function checkImageQuota() {
+            const quota = getQuota(QUOTA_KEY_IMAGE);
+            return { available: quota.count < 1, count: quota.count };
+        }
+
+        function updateImageQuota() {
+            const quota = getQuota(QUOTA_KEY_IMAGE);
+            quota.count += 1;
+            localStorage.setItem(QUOTA_KEY_IMAGE, JSON.stringify(quota));
+        }
+        
+        function updateTextQuota() {
+            const quota = getQuota(QUOTA_KEY_TEXT);
+            quota.count += 1;
+            localStorage.setItem(QUOTA_KEY_TEXT, JSON.stringify(quota));
+        }
+
+
+        // === UI State Management ===
+
+        function showUsageModal() {
+            const textQuota = getQuota(QUOTA_KEY_TEXT);
+            const imageQuota = checkImageQuota();
+            
+            textUsageCount.textContent = textQuota.count;
+            imageUsageCount.textContent = `${imageQuota.count} / 1`;
+
+            usageModal.classList.remove('opacity-0', 'pointer-events-none');
+            usageModal.querySelector('div').classList.remove('-translate-y-10');
+        }
+
+        function hideUsageModal() {
+            usageModal.classList.add('opacity-0', 'pointer-events-none');
+            usageModal.querySelector('div').classList.add('-translate-y-10');
+        }
+
+        function enterReadingMode() {
+            isReadingMode = true;
+            mainGrid.classList.add('reading-mode');
+            storyOutputWrapper.classList.remove('h-[250px]', 'fade-out-bottom', 'overflow-hidden');
+            storyOutputWrapper.classList.add('h-full', 'overflow-y-auto');
+            viewFullStoryBtn.classList.add('hidden');
+            backToEditorBtn.classList.remove('hidden');
+            backToEditorBtn.classList.add('inline-flex');
+        }
+
+        function exitReadingMode() {
+            isReadingMode = false;
+            mainGrid.classList.remove('reading-mode');
+            storyOutputWrapper.classList.add('h-[250px]', 'fade-out-bottom', 'overflow-hidden');
+            storyOutputWrapper.classList.remove('h-full', 'overflow-y-auto');
+            viewFullStoryBtn.classList.remove('hidden');
+            backToEditorBtn.classList.add('hidden');
+            backToEditorBtn.classList.remove('inline-flex');
+        }
+
+        function setLoadingState(isLoading, isContinuing) {
+            const btn = isContinuing ? continueStoryBtn : generateBtn;
+            const textEl = isContinuing ? continueStoryBtn : buttonText;
+            const defaultText = isContinuing ? 'Continue Story...' : 'Generate Story';
+            const loadingText = isContinuing ? 'Continuing...' : 'Generating...';
+
+            if (isLoading) {
+                btn.disabled = true;
+                textEl.textContent = loadingText;
+                if (!isContinuing) {
+                    loadingSpinner.classList.remove('hidden');
+                }
+                if (!isContinuing) {
+                    storyTitleEl.textContent = 'Generated Story';
+                    outputEl.innerHTML = '<p class="italic">Your generated story will appear here...</p>';
+                    storyControls.classList.add('hidden');
+                    storyControls.classList.remove('flex');
+                    setImageState('placeholder');
+                    if (isReadingMode) exitReadingMode();
+                }
+                errorEl.classList.add('hidden');
+            } else {
+                btn.disabled = false;
+                textEl.textContent = defaultText;
+                if (!isContinuing) {
+                    loadingSpinner.classList.add('hidden');
+                }
+            }
+        }
+
+        function setImageState(state) {
+            imagePlaceholder.classList.add('hidden');
+            generatedImage.classList.add('hidden');
+            imageLoader.classList.add('hidden');
+
+            if (state === 'placeholder') {
+                imagePlaceholder.textContent = 'An illustration for your story will appear here.';
+                imagePlaceholder.classList.remove('hidden');
+            } else if (state === 'loading') {
+                imageLoader.classList.remove('hidden', 'items-center', 'justify-center');
+                imageLoader.classList.add('flex', 'items-center', 'justify-center', 'flex-col');
+            } else if (state === 'image') {
+                generatedImage.classList.remove('hidden');
+            } else if (state === 'quota') {
+                imagePlaceholder.textContent = 'You have used your 1 daily image. A new one is available tomorrow.';
+                imagePlaceholder.classList.remove('hidden');
+            }
+        }
+
+        function showError(message) {
+            errorEl.textContent = message;
+            errorEl.classList.remove('hidden');
+        }
+        
+        function showToast(message, isError = false) {
+            toastEl.textContent = message;
+            if(isError) {
+                toastEl.classList.replace('bg-green-600', 'bg-red-600');
+            } else {
+                toastEl.classList.replace('bg-red-600', 'bg-green-600');
+            }
+            
+            toastEl.classList.remove('opacity-0', 'translate-y-5');
+            setTimeout(() => {
+                toastEl.classList.add('opacity-0', 'translate-y-5');
+            }, 3000);
+        }
+
+        async function fetchWithBackoff(apiUrl, payload, retries = 5, delay = 1000) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        return await response.json();
+                    }
+                    
+                    if (response.status === 400) {
+                         const errorBody = await response.json();
+                         if (errorBody?.error?.message.includes("API key not valid")) {
+                             throw new Error("API key not valid. Please check your key and save it again.");
+                         } else {
+                             throw new Error(`HTTP error! status: 400 - ${errorBody?.error?.message || 'Bad Request'}`);
+                         }
+                    }
+
+                    if (response.status === 429 || response.status >= 500) {
+                        await new Promise(res => setTimeout(res, delay * Math.pow(2, i)));
+                    } else {
+                        const errorBody = await response.json();
+                        console.error("API Error:", errorBody);
+                        throw new Error(`HTTP error! status: ${response.status} - ${errorBody?.error?.message || 'Unknown error'}`);
+                    }
+                } catch (error) {
+                    if (i === retries - 1) throw error; // Re-throw last error
+                    if (error.message.includes("API key not valid")) throw error; // Don't retry on bad key
+                    await new Promise(res => setTimeout(res, delay * Math.pow(2, i)));
+                }
+            }
+        }
+
+    </script>
+</body>
+</html>
