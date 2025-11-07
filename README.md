@@ -26,9 +26,10 @@ No backend. No setup. Just pure front-end magic powered by JavaScript and the Ge
 
 ## 🌌 How It Works
 
-1. Type a prompt — e.g. *“A robot learns to dream.”*  
-2. Hit “Generate”  
-3. Watch as the AI weaves a short, coherent story in seconds
+1. Enter your Google AI Studio API Key
+2. Type a prompt — e.g. *“A robot learns to dream.”*  
+3. Hit “Generate”  
+4. Watch as the AI weaves a short, coherent story in seconds
 
 ---
 
